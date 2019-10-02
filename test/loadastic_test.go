@@ -36,10 +36,7 @@ func TestFailLogicAndHooksInvocation(t *testing.T) {
 				mustFail: test.failRequest && !test.failInFailChecker,
 			}
 
-			loadastic := NewLoadastic(func(tickerTimestamp time.Time, id uint64) mockRequest {
-				requestFactoryCount++
-				return nil
-			}, &sender, WithBeforeSend(func(request mockRequest, tickerTimestamp time.Time, id uint64) {
+			loadastic := NewLoadastic(&sender, WithBeforeSend(func(request mockRequest, tickerTimestamp time.Time, id uint64) {
 				beforeCount++
 			}), WithAfterSend(func(request mockRequest, response mockResponse, id uint64) {
 				afterSendCount++
@@ -53,7 +50,10 @@ func TestFailLogicAndHooksInvocation(t *testing.T) {
 				return nil
 			}))
 
-			loadastic.StartSteps(common.Step{Rps: 10, Duration: time.Second})
+			loadastic.StartSteps(func(tickerTimestamp time.Time, id uint64) mockRequest {
+				requestFactoryCount++
+				return nil
+			}, common.Step{Rps: 10, Duration: time.Second})
 
 			assert.Equal(t, 10, beforeCount)
 			if !test.failRequest {
@@ -82,13 +82,13 @@ func TestWorkersScaleUp(t *testing.T) {
 	sender := mockSender{count: 0, mustFail: false}
 	afterSendCount := 0
 
-	loadastic := NewLoadastic(func(tickerTimestamp time.Time, id uint64) mockRequest {
-		return nil
-	}, &sender, WithAfterSend(func(request mockRequest, response mockResponse, id uint64) {
+	loadastic := NewLoadastic(&sender, WithAfterSend(func(request mockRequest, response mockResponse, id uint64) {
 		afterSendCount++
 	}))
 
-	loadastic.StartSteps(common.Step{Rps: 1000, Duration: time.Second})
+	loadastic.StartSteps(func(tickerTimestamp time.Time, id uint64) mockRequest {
+		return nil
+	}, common.Step{Rps: 1000, Duration: time.Second})
 
 	assert.Equal(t, 1000, sender.count)
 	assert.Equal(t, 1000, afterSendCount)

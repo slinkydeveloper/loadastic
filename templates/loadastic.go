@@ -27,7 +27,6 @@ type Sender interface {
 }
 
 type Loadastic struct {
-	requestFactory RequestFactory
 	failedChecker  FailedChecker
 	sender         Sender
 	initialWorkers uint
@@ -37,9 +36,8 @@ type Loadastic struct {
 	afterFailed AfterFailed
 }
 
-func NewLoadastic(requestFactory RequestFactory, sender Sender, opts ...func(*Loadastic)) Loadastic {
+func NewLoadastic(sender Sender, opts ...func(*Loadastic)) Loadastic {
 	l := Loadastic{
-		requestFactory: requestFactory,
 		sender:         sender,
 		initialWorkers: 10,
 	}
@@ -81,13 +79,13 @@ func WithInitialWorkers(initialWorkers uint) func(*Loadastic) {
 	}
 }
 
-func (l Loadastic) StartSteps(steps ...common.Step) {
+func (l Loadastic) StartSteps(requestFactory RequestFactory, steps ...common.Step) {
 	for _, s := range steps {
-		l.ExecutePace(vegeta.ConstantPacer{Freq: int(s.Rps), Per: time.Second}, s.Duration)
+		l.ExecutePace(requestFactory, vegeta.ConstantPacer{Freq: int(s.Rps), Per: time.Second}, s.Duration)
 	}
 }
 
-func (l Loadastic) ExecutePace(pacer vegeta.Pacer, duration time.Duration) {
+func (l Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer, duration time.Duration) {
 	workers := sync.WaitGroup{}
 	jobsPool := sync.Pool{
 		New: func() interface{} {
@@ -97,7 +95,7 @@ func (l Loadastic) ExecutePace(pacer vegeta.Pacer, duration time.Duration) {
 	jobsCh := make(chan *common.Job)
 
 	for i := uint(0); i < l.initialWorkers; i++ {
-		go l.worker(&workers, jobsCh, &jobsPool)
+		go l.worker(requestFactory, &workers, jobsCh, &jobsPool)
 	}
 	workers.Add(int(l.initialWorkers))
 
@@ -127,7 +125,7 @@ func (l Loadastic) ExecutePace(pacer vegeta.Pacer, duration time.Duration) {
 			continue
 		default:
 			workers.Add(1)
-			go l.worker(&workers, jobsCh, &jobsPool)
+			go l.worker(requestFactory, &workers, jobsCh, &jobsPool)
 		}
 	}
 
@@ -137,11 +135,11 @@ func (l Loadastic) ExecutePace(pacer vegeta.Pacer, duration time.Duration) {
 	runtime.GC()
 }
 
-func (l Loadastic) worker(workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
+func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
 	defer workersCount.Done()
 	for j := range jobs {
 		// Create the request
-		req := l.requestFactory(j.Timestamp, j.Id)
+		req := requestFactory(j.Timestamp, j.Id)
 
 		if l.beforeSend != nil {
 			l.beforeSend(req, j.Timestamp, j.Id)
