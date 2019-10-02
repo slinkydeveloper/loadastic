@@ -6,11 +6,11 @@ type mockRequest interface{}
 type mockResponse interface{}
 
 type mockSender struct {
-	count int
+	count    int
 	mustFail bool
 }
 
-func (m mockSender) Send(request interface{}) (interface{}, error) {
+func (m *mockSender) Send(request mockRequest) (mockResponse, error) {
 	m.count++
 	if m.mustFail {
 		return nil, fmt.Errorf("bla")
@@ -18,6 +18,3 @@ func (m mockSender) Send(request interface{}) (interface{}, error) {
 		return nil, nil
 	}
 }
-
-
-

@@ -13,15 +13,15 @@ import (
 	vegeta "github.com/tsenart/vegeta/lib"
 )
 
-type BeforeSend func(request MockRequest, tickerTimestamp time.Time, id uint64)
-type AfterSend func(request MockRequest, response MockResponse, id uint64)
-type AfterFailed func(request MockRequest, err error, id uint64)
+type BeforeSend func(request mockRequest, tickerTimestamp time.Time, id uint64)
+type AfterSend func(request mockRequest, response mockResponse, id uint64)
+type AfterFailed func(request mockRequest, err error, id uint64)
 
-type RequestFactory func(tickerTimestamp time.Time, id uint64) MockRequest
-type FailedChecker func(response MockResponse) error
+type RequestFactory func(tickerTimestamp time.Time, id uint64) mockRequest
+type FailedChecker func(response mockResponse) error
 
 type Sender interface {
-	Send(request MockRequest) (MockResponse, error)
+	Send(request mockRequest) (mockResponse, error)
 }
 
 type Loadastic struct {
@@ -35,53 +35,46 @@ type Loadastic struct {
 	afterFailed AfterFailed
 }
 
-func NewLoadastic(requestFactory RequestFactory, sender Sender, opts ...func(Loadastic)) Loadastic {
+func NewLoadastic(requestFactory RequestFactory, sender Sender, opts ...func(*Loadastic)) Loadastic {
 	l := Loadastic{
 		requestFactory: requestFactory,
 		sender:         sender,
 		initialWorkers: 10,
-
-		failedChecker: func(response MockResponse) error {
-			return nil
-		},
-		beforeSend:  func(request MockRequest, tickerTimestamp time.Time, id uint64) {},
-		afterSend:   func(request MockRequest, response MockResponse, id uint64) {},
-		afterFailed: func(request MockRequest, err error, id uint64) {},
 	}
 
 	for _, f := range opts {
-		f(l)
+		f(&l)
 	}
 
 	return l
 }
 
-func WithFailedChecker(checker FailedChecker) func(Loadastic) {
-	return func(loadastic Loadastic) {
+func WithFailedChecker(checker FailedChecker) func(*Loadastic) {
+	return func(loadastic *Loadastic) {
 		loadastic.failedChecker = checker
 	}
 }
 
-func WithBeforeSend(beforeSend BeforeSend) func(Loadastic) {
-	return func(loadastic Loadastic) {
+func WithBeforeSend(beforeSend BeforeSend) func(*Loadastic) {
+	return func(loadastic *Loadastic) {
 		loadastic.beforeSend = beforeSend
 	}
 }
 
-func WithAfterSend(afterSend AfterSend) func(Loadastic) {
-	return func(loadastic Loadastic) {
+func WithAfterSend(afterSend AfterSend) func(*Loadastic) {
+	return func(loadastic *Loadastic) {
 		loadastic.afterSend = afterSend
 	}
 }
 
-func WithAfterFailed(afterFailed AfterFailed) func(Loadastic) {
-	return func(loadastic Loadastic) {
+func WithAfterFailed(afterFailed AfterFailed) func(*Loadastic) {
+	return func(loadastic *Loadastic) {
 		loadastic.afterFailed = afterFailed
 	}
 }
 
-func WithInitialWorkers(initialWorkers uint) func(Loadastic) {
-	return func(loadastic Loadastic) {
+func WithInitialWorkers(initialWorkers uint) func(*Loadastic) {
+	return func(loadastic *Loadastic) {
 		loadastic.initialWorkers = initialWorkers
 	}
 }
@@ -104,6 +97,7 @@ func (l Loadastic) ExecutePace(pacer vegeta.Pacer, duration time.Duration) {
 	for i := uint(0); i < l.initialWorkers; i++ {
 		go l.worker(&workers, jobsCh, &jobsPool)
 	}
+	workers.Add(int(l.initialWorkers))
 
 	began, count := time.Now(), uint64(0)
 	for {
@@ -147,24 +141,34 @@ func (l Loadastic) worker(workersCount *sync.WaitGroup, jobs <-chan *common.Job,
 		// Create the request
 		req := l.requestFactory(j.Timestamp, j.Id)
 
-		l.beforeSend(req, j.Timestamp, j.Id)
+		if l.beforeSend != nil {
+			l.beforeSend(req, j.Timestamp, j.Id)
+		}
 
 		// Send the request
 		res, err := l.sender.Send(req)
 
 		if err != nil {
-			l.afterFailed(req, err, j.Id)
+			if l.afterFailed != nil {
+				l.afterFailed(req, err, j.Id)
+			}
 			continue
 		}
 
 		// Check if failed
-		err = l.failedChecker(res)
-		if err != nil {
-			l.afterFailed(req, err, j.Id)
-			continue
+		if l.failedChecker != nil {
+			err = l.failedChecker(res)
+			if err != nil {
+				if l.afterFailed != nil {
+					l.afterFailed(req, err, j.Id)
+				}
+				continue
+			}
 		}
 
-		l.afterSend(req, res, j.Id)
+		if l.afterSend != nil {
+			l.afterSend(req, res, j.Id)
+		}
 
 		jobsPool.Put(j)
 	}

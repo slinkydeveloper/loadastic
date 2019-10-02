@@ -13,17 +13,17 @@ func TestFailLogicAndHooksInvocation(t *testing.T) {
 		failRequest       bool
 		failInFailChecker bool
 	}{{
-		failRequest: false,
+		failRequest:       false,
 		failInFailChecker: false,
 	},
-	{
-		failRequest: true,
-		failInFailChecker: false,
-	},
-	{
-		failRequest: true,
-		failInFailChecker: true,
-	}}
+		{
+			failRequest:       true,
+			failInFailChecker: false,
+		},
+		{
+			failRequest:       true,
+			failInFailChecker: true,
+		}}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("fail: %v, fail in FailedChecker: %v", test.failRequest, test.failInFailChecker), func(t *testing.T) {
 			beforeCount := 0
@@ -39,7 +39,7 @@ func TestFailLogicAndHooksInvocation(t *testing.T) {
 			loadastic := NewLoadastic(func(tickerTimestamp time.Time, id uint64) mockRequest {
 				requestFactoryCount++
 				return nil
-			}, sender, WithBeforeSend(func(request mockRequest, tickerTimestamp time.Time, id uint64) {
+			}, &sender, WithBeforeSend(func(request mockRequest, tickerTimestamp time.Time, id uint64) {
 				beforeCount++
 			}), WithAfterSend(func(request mockRequest, response mockResponse, id uint64) {
 				afterSendCount++
@@ -53,7 +53,7 @@ func TestFailLogicAndHooksInvocation(t *testing.T) {
 				return nil
 			}))
 
-			loadastic.StartSteps(common.Step{Rps:10, Duration: time.Second})
+			loadastic.StartSteps(common.Step{Rps: 10, Duration: time.Second})
 
 			assert.Equal(t, 10, beforeCount)
 			if !test.failRequest {
@@ -84,15 +84,12 @@ func TestWorkersScaleUp(t *testing.T) {
 
 	loadastic := NewLoadastic(func(tickerTimestamp time.Time, id uint64) mockRequest {
 		return nil
-	}, sender, WithAfterSend(func(request mockRequest, response mockResponse, id uint64) {
+	}, &sender, WithAfterSend(func(request mockRequest, response mockResponse, id uint64) {
 		afterSendCount++
 	}))
 
-	loadastic.StartSteps(common.Step{Rps:1000, Duration: time.Second})
+	loadastic.StartSteps(common.Step{Rps: 1000, Duration: time.Second})
 
 	assert.Equal(t, 1000, sender.count)
 	assert.Equal(t, 1000, afterSendCount)
 }
-
-
-
