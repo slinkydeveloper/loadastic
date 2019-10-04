@@ -9,15 +9,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/slinkydeveloper/loadastic/common"
 	vegeta "github.com/tsenart/vegeta/lib"
 )
 
-type BeforeSend func(request RecordPayload, tickerTimestamp time.Time, id uint64)
-type AfterSend func(request RecordPayload, response interface{}, id uint64)
-type AfterFailed func(request RecordPayload, err error, id uint64)
+type BeforeSend func(request RecordPayload, tickerTimestamp time.Time, id uint64, uuid string)
+type AfterSend func(request RecordPayload, response interface{}, id uint64, uuid string)
+type AfterFailed func(request RecordPayload, err error, id uint64, uuid string)
 
-type RequestFactory func(tickerTimestamp time.Time, id uint64) RecordPayload
+type RequestFactory func(tickerTimestamp time.Time, id uint64, uuid string) RecordPayload
 type FailedChecker func(response interface{}) error
 
 type Sender interface {
@@ -136,11 +137,14 @@ func (l Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer
 func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
 	defer workersCount.Done()
 	for j := range jobs {
+		// Generate UUID (required for distributed tests)
+		uuid := uuid.New().String()
+
 		// Create the request
-		req := requestFactory(j.Timestamp, j.Id)
+		req := requestFactory(j.Timestamp, j.Id, uuid)
 
 		if l.beforeSend != nil {
-			l.beforeSend(req, j.Timestamp, j.Id)
+			l.beforeSend(req, j.Timestamp, j.Id, uuid)
 		}
 
 		// Send the request
@@ -148,7 +152,7 @@ func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.Wait
 
 		if err != nil {
 			if l.afterFailed != nil {
-				l.afterFailed(req, err, j.Id)
+				l.afterFailed(req, err, j.Id, uuid)
 			}
 			continue
 		}
@@ -158,14 +162,14 @@ func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.Wait
 			err = l.failedChecker(res)
 			if err != nil {
 				if l.afterFailed != nil {
-					l.afterFailed(req, err, j.Id)
+					l.afterFailed(req, err, j.Id, uuid)
 				}
 				continue
 			}
 		}
 
 		if l.afterSend != nil {
-			l.afterSend(req, res, j.Id)
+			l.afterSend(req, res, j.Id, uuid)
 		}
 
 		jobsPool.Put(j)

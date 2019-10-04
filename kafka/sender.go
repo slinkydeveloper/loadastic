@@ -62,7 +62,7 @@ func randomStringFromCharset(length uint, charset string) string {
 func RandomRequestFactory(messageSize uint) RequestFactory {
 	rand.Seed(time.Now().UnixNano())
 
-	return func(tickerTimestamp time.Time, id uint64) RecordPayload {
+	return func(tickerTimestamp time.Time, id uint64, uuid string) RecordPayload {
 		return []byte(randomStringFromCharset(messageSize, charset))
 	}
 }
