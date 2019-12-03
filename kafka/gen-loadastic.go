@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slinkydeveloper/loadastic/common"
-	vegeta "github.com/slinkydeveloper/vegeta/lib"
+	vegeta "github.com/tsenart/vegeta/lib"
 )
 
 type BeforeSend func(request RecordPayload, tickerTimestamp time.Time, id uint64, uuid string)
