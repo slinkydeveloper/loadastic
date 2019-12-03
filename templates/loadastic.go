@@ -1,7 +1,7 @@
 package templates
 
-//go:generate genny -in=$GOFILE -out=../kafka/gen-$GOFILE -pkg=kafka gen "T_REQUEST=RecordPayload T_RESPONSE=interface{}"
-//go:generate genny -in=$GOFILE -out=../test/gen-$GOFILE -pkg=test gen "T_REQUEST=mockRequest T_RESPONSE=mockResponse"
+//go:generate genny -in=$GOFILE -out=../kafka/gen-$GOFILE -pkg=kafka gen "T_REQUEST=RecordPayload T_RESPONSE=interface{} T_WORKER_RESOURCE=*KafkaWorker"
+//go:generate genny -in=$GOFILE -out=../test/gen-$GOFILE -pkg=test gen "T_REQUEST=mockRequest T_RESPONSE=mockResponse T_WORKER_RESOURCE=interface{}"
 
 import (
 	"github.com/cheekybits/genny/generic"
@@ -15,6 +15,7 @@ import (
 
 type T_REQUEST generic.Type
 type T_RESPONSE generic.Type
+type T_WORKER_RESOURCE generic.Type
 
 type BeforeSend func(request T_REQUEST, tickerTimestamp time.Time, id uint64, uuid string)
 type AfterSend func(request T_REQUEST, response T_RESPONSE, id uint64, uuid string)
@@ -24,7 +25,8 @@ type RequestFactory func(tickerTimestamp time.Time, id uint64, uuid string) T_RE
 type FailedChecker func(response T_RESPONSE) error
 
 type Sender interface {
-	Send(request T_REQUEST) (T_RESPONSE, error)
+	InitializeWorker() T_WORKER_RESOURCE
+	Send(worker T_WORKER_RESOURCE, request T_REQUEST) (T_RESPONSE, error)
 }
 
 type Loadastic struct {
@@ -80,13 +82,13 @@ func WithInitialWorkers(initialWorkers uint) func(*Loadastic) {
 	}
 }
 
-func (l Loadastic) StartSteps(requestFactory RequestFactory, steps ...common.Step) {
+func (l *Loadastic) StartSteps(requestFactory RequestFactory, steps ...common.Step) {
 	for _, s := range steps {
 		l.ExecutePace(requestFactory, vegeta.ConstantPacer{Freq: int(s.Rps), Per: time.Second}, s.Duration)
 	}
 }
 
-func (l Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer, duration time.Duration) {
+func (l *Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer, duration time.Duration) {
 	workers := sync.WaitGroup{}
 	jobsPool := sync.Pool{
 		New: func() interface{} {
@@ -136,8 +138,9 @@ func (l Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer
 	runtime.GC()
 }
 
-func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
+func (l *Loadastic) worker(requestFactory RequestFactory, workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
 	defer workersCount.Done()
+	workerResource := l.sender.InitializeWorker()
 	for j := range jobs {
 		// Generate UUID (required for distributed tests)
 		uuid := uuid.New().String()
@@ -150,7 +153,7 @@ func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.Wait
 		}
 
 		// Send the request
-		res, err := l.sender.Send(req)
+		res, err := l.sender.Send(workerResource, req)
 
 		if err != nil {
 			if l.afterFailed != nil {

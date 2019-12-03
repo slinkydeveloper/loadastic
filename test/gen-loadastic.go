@@ -9,9 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/slinkydeveloper/loadastic/common"
-	vegeta "github.com/tsenart/vegeta/lib"
+	vegeta "github.com/slinkydeveloper/vegeta/lib"
 )
 
 type BeforeSend func(request mockRequest, tickerTimestamp time.Time, id uint64, uuid string)
@@ -22,7 +21,8 @@ type RequestFactory func(tickerTimestamp time.Time, id uint64, uuid string) mock
 type FailedChecker func(response mockResponse) error
 
 type Sender interface {
-	Send(request mockRequest) (mockResponse, error)
+	InitializeWorker() interface{}
+	Send(worker interface{}, request mockRequest) (mockResponse, error)
 }
 
 type Loadastic struct {
@@ -78,13 +78,13 @@ func WithInitialWorkers(initialWorkers uint) func(*Loadastic) {
 	}
 }
 
-func (l Loadastic) StartSteps(requestFactory RequestFactory, steps ...common.Step) {
+func (l *Loadastic) StartSteps(requestFactory RequestFactory, steps ...common.Step) {
 	for _, s := range steps {
 		l.ExecutePace(requestFactory, vegeta.ConstantPacer{Freq: int(s.Rps), Per: time.Second}, s.Duration)
 	}
 }
 
-func (l Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer, duration time.Duration) {
+func (l *Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer, duration time.Duration) {
 	workers := sync.WaitGroup{}
 	jobsPool := sync.Pool{
 		New: func() interface{} {
@@ -134,8 +134,9 @@ func (l Loadastic) ExecutePace(requestFactory RequestFactory, pacer vegeta.Pacer
 	runtime.GC()
 }
 
-func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
+func (l *Loadastic) worker(requestFactory RequestFactory, workersCount *sync.WaitGroup, jobs <-chan *common.Job, jobsPool *sync.Pool) {
 	defer workersCount.Done()
+	workerResource := l.sender.InitializeWorker()
 	for j := range jobs {
 		// Generate UUID (required for distributed tests)
 		uuid := uuid.New().String()
@@ -148,7 +149,7 @@ func (l Loadastic) worker(requestFactory RequestFactory, workersCount *sync.Wait
 		}
 
 		// Send the request
-		res, err := l.sender.Send(req)
+		res, err := l.sender.Send(workerResource, req)
 
 		if err != nil {
 			if l.afterFailed != nil {
