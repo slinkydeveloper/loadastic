@@ -4,13 +4,14 @@ package templates
 //go:generate genny -in=$GOFILE -out=../test/gen-$GOFILE -pkg=test gen "T_REQUEST=mockRequest T_RESPONSE=mockResponse T_WORKER_RESOURCE=interface{}"
 
 import (
-	"github.com/cheekybits/genny/generic"
-	"github.com/google/uuid"
-	"github.com/slinkydeveloper/loadastic/common"
-	vegeta "github.com/tsenart/vegeta/lib"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/cheekybits/genny/generic"
+	"github.com/google/uuid"
+	"github.com/slinkydeveloper/loadastic/common"
+	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
 
 type T_REQUEST generic.Type

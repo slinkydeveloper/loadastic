@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/slinkydeveloper/loadastic/common"
-	vegeta "github.com/slinkydeveloper/vegeta/lib"
+	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
 
 type BeforeSend func(request mockRequest, tickerTimestamp time.Time, id uint64, uuid string)
