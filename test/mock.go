@@ -10,7 +10,11 @@ type mockSender struct {
 	mustFail bool
 }
 
-func (m *mockSender) Send(request mockRequest) (mockResponse, error) {
+func (m *mockSender) InitializeWorker() interface{} {
+	return nil
+}
+
+func (m *mockSender) Send(worker interface{}, request mockRequest) (mockResponse, error) {
 	m.count++
 	if m.mustFail {
 		return nil, fmt.Errorf("bla")
