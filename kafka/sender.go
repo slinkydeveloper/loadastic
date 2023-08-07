@@ -1,10 +1,11 @@
 package kafka
 
 import (
-	"github.com/Shopify/sarama"
 	"math/rand"
 	"strings"
 	"time"
+
+	"github.com/IBM/sarama"
 )
 
 type RecordPayload []byte
